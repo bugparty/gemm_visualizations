@@ -191,7 +191,11 @@ def update_simulation(n, block_size, loop_order, blocked, reset_clicks):
     tracks = sim.simulate(loop_order, blocked=blocked)
 
     # Run cache simulation
-    cache = CacheSimulator(cache_size=32768, line_size=64, associativity=8)
+    # Use a smaller cache to better demonstrate the impact of different loop orderings
+    # For n=16: 3 matrices * 16*16*8 bytes = 6KB total
+    # Using 4KB cache creates realistic cache pressure
+    cache_size = max(4096, n * n * 8)  # Scale cache size with matrix size, minimum 4KB
+    cache = CacheSimulator(cache_size=cache_size, line_size=64, associativity=4)
     cache_stats = cache.simulate_accesses(tracks, matrix_size=n)
 
     # Store in global state
@@ -214,6 +218,7 @@ def update_simulation(n, block_size, loop_order, blocked, reset_clicks):
         html.Hr(),
         html.P([html.Strong("Total Operations: "), f"{len(tracks):,}"]),
         html.P([html.Strong("Memory Accesses: "), f"{cache_stats['total_accesses']:,}"]),
+        html.P([html.Strong("Cache Size: "), f"{cache_size // 1024}KB"], style={'fontSize': 12, 'color': '#7f8c8d'}),
         html.Hr(),
         html.H5("🎯 Cache Performance", style={'color': '#34495e', 'marginTop': 15}),
         html.P([html.Strong("Hit Rate: "),
