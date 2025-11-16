@@ -1,0 +1,11 @@
+# Core dependencies for GEMM visualization Hugging Face Space
+
+# Numerical computing
+numpy>=1.21.0
+
+# Interactive web visualization (Dash + Plotly)
+dash>=2.14.0
+plotly>=5.17.0
+
+# For faster computation
+numba>=0.56.0
