@@ -4,8 +4,16 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from numba import jit
-matplotlib.use('MacOSX')
+import sys
 import time
+
+# Auto-detect platform and set backend
+if sys.platform == "darwin":
+    matplotlib.use('MacOSX')
+elif sys.platform == "linux":
+    matplotlib.use('Agg')  # Non-interactive backend for Linux
+elif sys.platform == "win32":
+    matplotlib.use('TkAgg')  # Windows backend
 start_time = time.time()
 # Parameters
 n = 16  # Matrix size (n x n)
@@ -81,54 +89,72 @@ def update(poses):
         rect.set_xy((posi[1] - 0.5, posi[0] - 0.5))
 
 
-FFMPEG_CODEC = 'h264_videotoolbox'
+# Auto-detect codec based on platform
+if sys.platform == "darwin":
+    FFMPEG_CODEC = 'h264_videotoolbox'  # Mac hardware acceleration
+elif sys.platform == "linux":
+    FFMPEG_CODEC = 'libx264'  # Linux standard codec
+elif sys.platform == "win32":
+    FFMPEG_CODEC = 'libx264'  # Windows standard codec
+else:
+    FFMPEG_CODEC = 'libx264'  # Fallback
+
 VIDEO_SPEED = 15
-frame_interval =  100/VIDEO_SPEED
+frame_interval = 100/VIDEO_SPEED
 
-def draw_kji():
-    print("drawing")
-    plt.title("kji-kji matrix A,B,C memory access animation")
-    ani = animation.FuncAnimation(fig, update,frames=tracks_kji, repeat=False)
-    print("saving mp4")
-    FFwriter = animation.FFMpegWriter(fps=VIDEO_SPEED,codec=FFMPEG_CODEC)
-    ani.save('animation_kji_b{}_spd{}.mp4'.format(BLOCK_SIZE,VIDEO_SPEED), writer = FFwriter)
-def draw_ikj():
-    print("drawing")
-    plt.title("ikj-ikj matrix A,B,C memory access animation")
-    ani = animation.FuncAnimation(fig, update,frames=tracks_kji, repeat=False)
-    print("saving mp4")
-    FFwriter = animation.FFMpegWriter(fps=VIDEO_SPEED,codec=FFMPEG_CODEC)
-    ani.save('animation_ikj_b{}_spd{}.mp4'.format(BLOCK_SIZE,VIDEO_SPEED), writer = FFwriter)
-def draw_ijk():
-    print("drawing")
-    plt.title("ijk-ijk matrix A,B,C memory access animation")
-    ani = animation.FuncAnimation(fig, update, frames=tracks_ijk, repeat=False)
-    print("saving ijk mp4")
-    FFwriter = animation.FFMpegWriter(fps=VIDEO_SPEED,codec=FFMPEG_CODEC)
-    ani.save('animation_ijk_b{}_spd{}.mp4'.format(BLOCK_SIZE,VIDEO_SPEED), writer = FFwriter)
+def draw_animation(tracks, loop_order, block_size=None, video_speed=None):
+    """
+    Generic function to draw GEMM memory access animation.
+
+    Args:
+        tracks: List of memory access positions
+        loop_order: String describing loop order (e.g., 'kji', 'ikj', 'ijk')
+        block_size: Block size for tiling (None for unblocked)
+        video_speed: Frames per second (defaults to VIDEO_SPEED)
+    """
+    if block_size is None:
+        block_size = BLOCK_SIZE
+    if video_speed is None:
+        video_speed = VIDEO_SPEED
+
+    print(f"Drawing {loop_order} animation...")
+    plt.title(f"{loop_order} matrix A,B,C memory access animation")
+    ani = animation.FuncAnimation(fig, update, frames=tracks, repeat=False)
+    print(f"Saving {loop_order} mp4...")
+    FFwriter = animation.FFMpegWriter(fps=video_speed, codec=FFMPEG_CODEC)
+    filename = f'animation_{loop_order}_b{block_size}_spd{video_speed}.mp4'
+    ani.save(filename, writer=FFwriter)
+    print(f"Saved: {filename}")
 
 
 
-BLOCK_SIZE=4
+BLOCK_SIZE = 4
 # Run the simulation
+print(f"Starting GEMM visualization with n={n}, BLOCK_SIZE={BLOCK_SIZE}")
+
+# KJI simulation
 tracks_kji = []
 dgemm_kji2_simulation(n, BLOCK_SIZE, tracks_kji)
-draw_kji()
+draw_animation(tracks_kji, 'kji', BLOCK_SIZE, VIDEO_SPEED)
 end_time = time.time()
 elapsed_time = end_time - start_time
-print(f"Script execution time: {elapsed_time:.2f} seconds")
+print(f"KJI execution time: {elapsed_time:.2f} seconds\n")
 start_time = time.time()
+
+# IKJ simulation
 tracks_ikj = []
 dgemm_ikj2_simulation(n, BLOCK_SIZE, tracks_ikj)
-draw_ikj()
+draw_animation(tracks_ikj, 'ikj', BLOCK_SIZE, VIDEO_SPEED)
 end_time = time.time()
 elapsed_time = end_time - start_time
-print(f"Script execution time: {elapsed_time:.2f} seconds")
+print(f"IKJ execution time: {elapsed_time:.2f} seconds\n")
 start_time = time.time()
+
+# IJK simulation
 tracks_ijk = []
 dgemm_ijk2_simulation(n, BLOCK_SIZE, tracks_ijk)
-draw_ijk()
+draw_animation(tracks_ijk, 'ijk', BLOCK_SIZE, VIDEO_SPEED)
 end_time = time.time()
 elapsed_time = end_time - start_time
-print(f"Script execution time: {elapsed_time:.2f} seconds")
+print(f"IJK execution time: {elapsed_time:.2f} seconds\n")
 start_time = time.time()
