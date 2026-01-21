@@ -27,6 +27,51 @@ simulation_data = {
     'heatmaps': {}
 }
 
+CACHE_CONFIG = {
+    'cache_size': 32768,
+    'line_size': 64,
+    'associativity': 8
+}
+
+
+def compute_cache_stats(tracks, matrix_size):
+    """Compute cache statistics and per-frame hit/miss data."""
+    cache = CacheSimulator(
+        cache_size=CACHE_CONFIG['cache_size'],
+        line_size=CACHE_CONFIG['line_size'],
+        associativity=CACHE_CONFIG['associativity']
+    )
+    matrix_bases = {
+        'A': 0x10000,
+        'B': 0x20000,
+        'C': 0x30000
+    }
+
+    hit_rate_by_frame = []
+    hits_by_frame = []
+    misses_by_frame = []
+
+    for a_pos, b_pos, c_pos in tracks:
+        addr_a = matrix_bases['A'] + (a_pos[0] * matrix_size + a_pos[1]) * cache.element_size
+        cache.access(addr_a)
+
+        addr_b = matrix_bases['B'] + (b_pos[0] * matrix_size + b_pos[1]) * cache.element_size
+        cache.access(addr_b)
+
+        addr_c = matrix_bases['C'] + (c_pos[0] * matrix_size + c_pos[1]) * cache.element_size
+        cache.access(addr_c)
+        cache.access(addr_c)
+
+        hit_rate_by_frame.append(cache.get_hit_rate())
+        hits_by_frame.append(cache.hits)
+        misses_by_frame.append(cache.misses)
+
+    stats = cache.get_statistics()
+    stats['hit_rate_by_frame'] = hit_rate_by_frame
+    stats['hits_by_frame'] = hits_by_frame
+    stats['misses_by_frame'] = misses_by_frame
+    return stats
+
 # Color scheme for matrices
 COLORS = {
     'A': 'rgba(255, 0, 0, 0.7)',      # Red
@@ -173,7 +218,6 @@ app.layout = html.Div([
 @app.callback(
     [Output('frame-slider', 'max'),
      Output('frame-slider', 'marks'),
-     Output('statistics-panel', 'children'),
      Output('animation-state', 'data')],
     [Input('matrix-size-slider', 'value'),
      Input('block-size-slider', 'value'),
@@ -188,8 +232,7 @@ def update_simulation(n, block_size, loop_order, blocked, reset_clicks):
     tracks = sim.simulate(loop_order, blocked=blocked)
 
     # Run cache simulation
-    cache = CacheSimulator(cache_size=32768, line_size=64, associativity=8)
-    cache_stats = cache.simulate_accesses(tracks, matrix_size=n)
+    cache_stats = compute_cache_stats(tracks, matrix_size=n)
 
     # Store in global state
     simulation_data['simulator'] = sim
@@ -202,26 +245,7 @@ def update_simulation(n, block_size, loop_order, blocked, reset_clicks):
     step = max(1, max_frame // 10)
     marks = {i: str(i) for i in range(0, max_frame + 1, step)}
 
-    # Statistics panel content
-    stats_content = html.Div([
-        html.H4("📈 Statistics", style={'color': '#34495e', 'marginBottom': 15}),
-        html.P([html.Strong("Matrix Size: "), f"{n} × {n}"]),
-        html.P([html.Strong("Block Size: "), f"{block_size}" if blocked else "Unblocked"]),
-        html.P([html.Strong("Loop Order: "), loop_order.upper()]),
-        html.Hr(),
-        html.P([html.Strong("Total Operations: "), f"{len(tracks):,}"]),
-        html.P([html.Strong("Memory Accesses: "), f"{cache_stats['total_accesses']:,}"]),
-        html.Hr(),
-        html.H5("🎯 Cache Performance", style={'color': '#34495e', 'marginTop': 15}),
-        html.P([html.Strong("Hit Rate: "),
-                html.Span(f"{cache_stats['hit_rate']:.2f}%",
-                         style={'color': '#27ae60' if cache_stats['hit_rate'] > 80 else '#e74c3c',
-                               'fontSize': 18, 'fontWeight': 'bold'})]),
-        html.P([html.Strong("Hits: "), f"{cache_stats['hits']:,}"]),
-        html.P([html.Strong("Misses: "), f"{cache_stats['misses']:,}"]),
-    ])
-
-    return max_frame, marks, stats_content, {'playing': False, 'frame': 0}
+    return max_frame, marks, {'playing': False, 'frame': 0}
 
 
 # Callback to handle play/pause
@@ -293,6 +317,52 @@ def update_frame(n_intervals, slider_value, reset_clicks, state, max_frame, spee
     return state['frame'], state
 
 
+@app.callback(
+    Output('statistics-panel', 'children'),
+    [Input('frame-slider', 'value'),
+     Input('matrix-size-slider', 'value'),
+     Input('block-size-slider', 'value'),
+     Input('loop-order-dropdown', 'value'),
+     Input('blocking-radio', 'value')]
+)
+def update_statistics_panel(frame, n, block_size, loop_order, blocked):
+    """Update the statistics panel based on current frame and configuration."""
+    tracks = simulation_data.get('tracks', [])
+    cache_stats = simulation_data.get('cache_stats', {})
+
+    if not tracks or not cache_stats:
+        return html.Div()
+
+    frame = min(frame, len(tracks) - 1)
+    hit_rate_by_frame = cache_stats.get('hit_rate_by_frame', [])
+    hits_by_frame = cache_stats.get('hits_by_frame', [])
+    misses_by_frame = cache_stats.get('misses_by_frame', [])
+
+    current_hit_rate = hit_rate_by_frame[frame] if hit_rate_by_frame else 0.0
+    current_hits = hits_by_frame[frame] if hits_by_frame else 0
+    current_misses = misses_by_frame[frame] if misses_by_frame else 0
+
+    stats_content = html.Div([
+        html.H4("📈 Statistics", style={'color': '#34495e', 'marginBottom': 15}),
+        html.P([html.Strong("Matrix Size: "), f"{n} × {n}"]),
+        html.P([html.Strong("Block Size: "), f"{block_size}" if blocked else "Unblocked"]),
+        html.P([html.Strong("Loop Order: "), loop_order.upper()]),
+        html.Hr(),
+        html.P([html.Strong("Total Operations: "), f"{len(tracks):,}"]),
+        html.P([html.Strong("Memory Accesses: "), f"{cache_stats['total_accesses']:,}"]),
+        html.Hr(),
+        html.H5("🎯 Cache Performance (to current frame)", style={'color': '#34495e', 'marginTop': 15}),
+        html.P([html.Strong("Hit Rate: "),
+                html.Span(f"{current_hit_rate:.2f}%",
+                         style={'color': '#27ae60' if current_hit_rate > 80 else '#e74c3c',
+                               'fontSize': 18, 'fontWeight': 'bold'})]),
+        html.P([html.Strong("Hits: "), f"{current_hits:,}"]),
+        html.P([html.Strong("Misses: "), f"{current_misses:,}"]),
+    ])
+
+    return stats_content
+
+
 # Callback to update visualizations
 @app.callback(
     [Output('main-animation', 'figure'),
@@ -357,9 +427,16 @@ def update_visualizations(frame, n):
     ])
 
     # Cache performance chart
-    hit_rate_history = cache_stats.get('hit_rate_history', [])
+    hit_rate_history = cache_stats.get('hit_rate_by_frame', [])
+    if hit_rate_history:
+        step = max(1, len(hit_rate_history) // 500)
+        hit_rate_history = hit_rate_history[::step]
+        hit_rate_x = list(range(0, len(cache_stats.get('hit_rate_by_frame', [])), step))
+    else:
+        hit_rate_x = []
     cache_fig = go.Figure()
     cache_fig.add_trace(go.Scatter(
+        x=hit_rate_x,
         y=hit_rate_history,
         mode='lines',
         line=dict(color='#27ae60', width=2),
@@ -368,7 +445,7 @@ def update_visualizations(frame, n):
     ))
     cache_fig.update_layout(
         title="Cache Hit Rate Over Time",
-        xaxis_title="Access (×100)",
+        xaxis_title="Frame",
         yaxis_title="Hit Rate (%)",
         yaxis=dict(range=[0, 100]),
         height=250,
