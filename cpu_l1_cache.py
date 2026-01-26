@@ -54,6 +54,10 @@ class L1Cache:
             'accesses': 0
         }
 
+        # Visualization Data
+        self.access_history = [] # List of boolean (True=Hit, False=Miss)
+        self.access_counts = {} # Address -> Count
+
     def _get_addr_components(self, address):
         # Offset: log2(64) = 6 bits
         # Set Index: log2(64) = 6 bits
@@ -88,11 +92,17 @@ class L1Cache:
 
         tag, set_index, offset = self._get_addr_components(address)
 
+        # Track access count
+        if address not in self.access_counts:
+            self.access_counts[address] = 0
+        self.access_counts[address] += 1
+
         # Check for Hit
         line = self._find_line(set_index, tag)
 
         if line:
             self.stats['hits'] += 1
+            self.access_history.append(True) # Hit
             line.last_accessed = self.global_clock
 
             if is_write:
@@ -116,6 +126,7 @@ class L1Cache:
 
         else:
             self.stats['misses'] += 1
+            self.access_history.append(False) # Miss
 
             # Allocate a line (Evict if necessary)
             victim = self._get_victim(set_index)
