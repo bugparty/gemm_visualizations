@@ -92,6 +92,10 @@ class L1Cache:
 
         tag, set_index, offset = self._get_addr_components(address)
 
+        # Bounds check: Ensure access does not span across cache lines
+        if offset + size > self.line_size:
+            raise ValueError(f"Access spans cache line: offset={offset}, size={size}, line_size={self.line_size}")
+
         # Track access count
         if address not in self.access_counts:
             self.access_counts[address] = 0
